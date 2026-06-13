@@ -306,18 +306,33 @@
 <script>
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzJp3XXcX30UaRHP9kZwcCdmlavYNxZtXb-M6HXwirVzjX6nCNaFAMMBQ4ZT1QsWpSf/exec';
 
-  // ── Saved Places (localStorage) ──────────────────────────
-  function getPlaces() {
-    try { return JSON.parse(localStorage.getItem('dads_taxi_places') || '[]'); } catch { return []; }
-  }
-  function savePlaces(arr) {
-    localStorage.setItem('dads_taxi_places', JSON.stringify(arr));
+  // ── Saved Places (Cloud via Google Script) ───────────────
+  let _placesCache = null;
+
+  async function getPlaces() {
+    if (_placesCache !== null) return _placesCache;
+    try {
+      const res = await fetch(SCRIPT_URL + '?action=getPlaces');
+      const data = await res.json();
+      _placesCache = Array.isArray(data) ? data : [];
+    } catch { _placesCache = []; }
+    return _placesCache;
   }
 
-  function openModal() {
-    renderPlacesList();
-    document.getElementById('modalOverlay').classList.add('open');
+  async function savePlaces(arr) {
+    _placesCache = arr;
+    try {
+      await fetch(SCRIPT_URL + '?action=savePlaces&places=' + encodeURIComponent(JSON.stringify(arr)));
+    } catch(e) { console.warn('Save places failed:', e); }
   }
+
+  async function openModal() {
+    document.getElementById('modalOverlay').classList.add('open');
+    document.getElementById('placesList').innerHTML = '<div class=\"empty-places\">Loading...</div>';
+    _placesCache = null;
+    await renderPlacesList();
+  }
+
   function closeModal() {
     document.getElementById('modalOverlay').classList.remove('open');
     document.getElementById('newPlaceName').value = '';
@@ -327,8 +342,8 @@
     document.getElementById('modalAC').innerHTML = '';
   }
 
-  function renderPlacesList() {
-    const places = getPlaces();
+  async function renderPlacesList() {
+    const places = await getPlaces();
     const el = document.getElementById('placesList');
     if (!places.length) {
       el.innerHTML = '<div class="empty-places">No saved places yet.</div>';
@@ -348,8 +363,8 @@
     `).join('');
   }
 
-  function startEditPlace(i) {
-    const places = getPlaces();
+  async function startEditPlace(i) {
+    const places = await getPlaces();
     const p = places[i];
     const card = document.getElementById('place-card-' + i);
     card.classList.add('editing');
@@ -366,48 +381,52 @@
     document.getElementById('edit-name-' + i).focus();
   }
 
-  function saveEditPlace(i) {
+  async function saveEditPlace(i) {
     const name = document.getElementById('edit-name-' + i).value.trim();
     const addr = document.getElementById('edit-addr-' + i).value.trim();
     if (!name || !addr) { showToast('⚠️ Enter both name and address'); return; }
-    const places = getPlaces();
+    const places = await getPlaces();
     const duplicate = places.find((p, idx) => idx !== i && p.name.toLowerCase() === name.toLowerCase());
     if (duplicate) { showToast('⚠️ A place with this name already exists'); return; }
     places[i] = { name, address: addr };
-    savePlaces(places);
-    renderPlacesList();
+    await savePlaces(places);
+    showToast('✅ Saving...');
+    _placesCache = null;
+    await renderPlacesList();
     showToast('✅ Place updated!');
   }
 
-  function addPlace() {
+  async function addPlace() {
     const name = document.getElementById('newPlaceName').value.trim();
     const addr = document.getElementById('newPlaceAddr').value.trim();
     if (!name || !addr) { showToast('⚠️ Enter both name and address'); return; }
-    const places = getPlaces();
+    const places = await getPlaces();
     if (places.find(p => p.name.toLowerCase() === name.toLowerCase())) {
       showToast('⚠️ A place with this name already exists');
       return;
     }
     places.push({ name, address: addr });
-    savePlaces(places);
+    await savePlaces(places);
     document.getElementById('newPlaceName').value = '';
     document.getElementById('newPlaceSearch').value = '';
     document.getElementById('newPlaceAddr').value = '';
     document.getElementById('modalAC').classList.remove('open');
-    renderPlacesList();
+    _placesCache = null;
+    await renderPlacesList();
     showToast('✅ Place saved!');
   }
 
-  function deletePlace(i) {
-    const places = getPlaces();
+  async function deletePlace(i) {
+    const places = await getPlaces();
     places.splice(i, 1);
-    savePlaces(places);
-    renderPlacesList();
+    await savePlaces(places);
+    _placesCache = null;
+    await renderPlacesList();
   }
 
   // ── Saved dropdown in form ────────────────────────────────
-  function showSaved(dropId) {
-    const places = getPlaces();
+  async function showSaved(dropId) {
+    const places = await getPlaces();
     const el = document.getElementById(dropId);
     if (!places.length) { el.innerHTML = '<div class="no-saved">No saved places. Use ⚙️ to add.</div>'; }
     else {
@@ -423,10 +442,10 @@
     el.classList.add('open');
   }
 
-  function toggleSaved(dropId) {
+  async function toggleSaved(dropId) {
     const el = document.getElementById(dropId);
     if (el.classList.contains('open')) { el.classList.remove('open'); }
-    else { showSaved(dropId); }
+    else { await showSaved(dropId); }
   }
 
   function selectSaved(dropId, address) {
