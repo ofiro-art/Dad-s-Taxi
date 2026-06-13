@@ -214,6 +214,21 @@
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .required-star { color: #7c6ef7; margin-left: 2px; }
+
+    /* Tip the Driver chips */
+    .tip-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .tip-chip {
+      flex: 1 1 calc(50% - 4px); min-width: 0; padding: 11px 12px;
+      background: #111118; border: 1px solid #2e2e3a; border-radius: 10px;
+      color: #c0c0d8; font-size: 14px; font-weight: 500; font-family: 'Inter', sans-serif;
+      cursor: pointer; transition: all 0.15s; text-align: center;
+    }
+    .tip-chip:hover { border-color: #7c6ef7; color: #f0f0f5; }
+    .tip-chip.selected {
+      background: #7c6ef7; border-color: #7c6ef7; color: #fff; font-weight: 700;
+    }
+    .tip-other-field { margin-top: 10px; display: none; }
+    .tip-other-field.visible { display: block; }
     @media (max-width: 400px) {
       .card { padding: 28px 20px 24px; }
       .row-2 { grid-template-columns: 1fr; }
@@ -307,6 +322,19 @@
         <label>Return Time</label>
         <div class="input-icon-wrap time-icon"><input type="time" id="returnTime" /></div>
       </div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Tip the Driver</label>
+    <div class="tip-chips">
+      <div class="tip-chip" data-tip="Kiss" onclick="selectTip(this)">💋 Kiss</div>
+      <div class="tip-chip" data-tip="Hug" onclick="selectTip(this)">🤗 Hug</div>
+      <div class="tip-chip" data-tip="Back Scratch" onclick="selectTip(this)">🖐️ Back Scratch</div>
+      <div class="tip-chip" data-tip="Other" onclick="selectTip(this)">✏️ Other</div>
+    </div>
+    <div class="tip-other-field" id="tipOtherField">
+      <input type="text" id="tipOther" placeholder="Enter your own tip..." />
     </div>
   </div>
 
@@ -601,6 +629,23 @@
     document.getElementById('returnTimeField').classList.toggle('visible', checked);
   }
 
+  function selectTip(el) {
+    document.querySelectorAll('.tip-chip').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    const isOther = el.dataset.tip === 'Other';
+    document.getElementById('tipOtherField').classList.toggle('visible', isOther);
+    if (isOther) document.getElementById('tipOther').focus();
+  }
+
+  function getTipValue() {
+    const selected = document.querySelector('.tip-chip.selected');
+    if (!selected) return '';
+    if (selected.dataset.tip === 'Other') {
+      return document.getElementById('tipOther').value.trim();
+    }
+    return selected.dataset.tip;
+  }
+
   function showToast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -622,6 +667,7 @@
     const purpose    = document.getElementById('purpose').value.trim();
     const needReturn = document.getElementById('returnToggle').checked;
     const returnTime = document.getElementById('returnTime').value;
+    const tip        = getTipValue();
 
     if (!date || !time || !from || !to) { showToast('⚠️ Please fill in all required fields'); return; }
     if (needReturn && !returnTime) { showToast('⚠️ Please enter the return time'); return; }
@@ -636,6 +682,7 @@
       formData.append('purpose', purpose);
       formData.append('needReturn', needReturn ? 'Yes' : 'No');
       formData.append('returnTime', returnTime);
+      formData.append('tip', tip);
       await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: formData });
     } catch(e) { console.warn('Sheets log failed:', e); }
 
@@ -646,6 +693,7 @@
     msg += `🏁 *To:* ${to}\n`;
     if (purpose) msg += `🎯 *Purpose:* ${purpose}\n`;
     msg += needReturn ? `\n↩️ *Return ride:* Yes, at ${returnTime}\n` : `\n↩️ *Return ride:* No\n`;
+    if (tip) msg += `🎁 *Tip for driver:* ${tip}\n`;
     msg += `\n_Please confirm ✅_`;
 
     showToast('✅ Saved! Opening WhatsApp...');
