@@ -795,7 +795,6 @@
     if (purpose) msg += `🎯 *Purpose:* ${purpose}\n`;
     msg += needReturn ? `\n↩️ *Return ride:* Yes, at ${returnTime}\n` : `\n↩️ *Return ride:* No\n`;
     if (tip) msg += `🎁 *Tip for driver:* ${tip}\n`;
-    msg += `\n🗺️ *Route map:* ${mapLink}\n`;
     msg += `\n_Please confirm ✅_`;
 
     showToast('✅ Saved! Opening WhatsApp...');
