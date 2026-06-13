@@ -90,7 +90,7 @@
     .autocomplete-list {
       display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0;
       background: #1e1e2a; border: 1px solid #3e3e52; border-radius: 12px;
-      z-index: 60; max-height: 200px; overflow-y: auto;
+      z-index: 300; max-height: 200px; overflow-y: auto;
       box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     }
     .autocomplete-list.open { display: block; }
@@ -105,11 +105,13 @@
     .modal-overlay {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75);
       z-index: 100; align-items: center; justify-content: center; padding: 20px;
+      overflow-y: auto;
     }
     .modal-overlay.open { display: flex; }
     .modal {
       background: #1a1a22; border: 1px solid #2e2e3a; border-radius: 20px;
       width: 100%; max-width: 440px; padding: 28px 24px; max-height: 90vh; overflow-y: auto;
+      overflow-x: visible; position: relative;
     }
     .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .modal-title { font-size: 18px; font-weight: 700; color: #f0f0f5; }
@@ -117,7 +119,7 @@
     .modal-close:hover { color: #f0f0f5; }
     .modal-section-title { font-size: 12px; font-weight: 600; color: #9090a8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; }
 
-    .add-place-form { background: #111118; border: 1px solid #2e2e3a; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+    .add-place-form { background: #111118; border: 1px solid #2e2e3a; border-radius: 12px; padding: 16px; margin-bottom: 20px; position: relative; overflow: visible; }
     .add-place-form input { margin-bottom: 10px; }
     .add-place-form input:last-of-type { margin-bottom: 0; }
 
