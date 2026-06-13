@@ -387,8 +387,8 @@
     if (!query || query.length < 3) { el.classList.remove('open'); return; }
     acTimers[acId] = setTimeout(async () => {
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5&countrycodes=il`, {
-          headers: { 'Accept-Language': 'he,en' }
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5`, {
+          headers: { 'Accept-Language': 'en' }
         });
         const data = await res.json();
         if (!data.length) { el.classList.remove('open'); return; }
