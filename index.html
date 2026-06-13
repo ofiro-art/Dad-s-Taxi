@@ -283,7 +283,7 @@
     <div class="manage-places-link"><button onclick="openModal()">⚙️ Manage saved places</button></div>
     <div class="loc-wrap" id="fromWrap">
       <div class="loc-input-row">
-        <input type="text" id="from" placeholder="Type or pick a saved place..." oninput="searchAddress(this.value, 'fromAC')" autocomplete="off" onfocus="showSaved('fromDrop')" />
+        <input type="text" id="from" placeholder="Type or pick a saved place..." oninput="this.dataset.addr=''; searchAddress(this.value, 'fromAC')" autocomplete="off" onfocus="showSaved('fromDrop')" />
         <button class="btn-saved" onclick="toggleSaved('fromDrop')" title="Saved places">📌</button>
       </div>
       <div class="saved-dropdown" id="fromDrop"></div>
@@ -295,7 +295,7 @@
     <label>Destination <span class="required-star">*</span></label>
     <div class="loc-wrap" id="toWrap">
       <div class="loc-input-row">
-        <input type="text" id="to" placeholder="Type or pick a saved place..." oninput="searchAddress(this.value, 'toAC')" autocomplete="off" onfocus="showSaved('toDrop')" />
+        <input type="text" id="to" placeholder="Type or pick a saved place..." oninput="this.dataset.addr=''; searchAddress(this.value, 'toAC')" autocomplete="off" onfocus="showSaved('toDrop')" />
         <button class="btn-saved" onclick="toggleSaved('toDrop')" title="Saved places">📌</button>
       </div>
       <div class="saved-dropdown" id="toDrop"></div>
@@ -475,14 +475,17 @@
     const el = document.getElementById(dropId);
     if (!places.length) { el.innerHTML = '<div class="no-saved">No saved places. Use ⚙️ to add.</div>'; }
     else {
-      el.innerHTML = places.map(p => `
-        <div class="saved-item" onclick="selectSaved('${dropId}', '${p.name.replace(/'/g, "\\'")}')">
+      el.innerHTML = places.map(p => {
+        const nameEsc = p.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const addrEsc = p.address.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        return `
+        <div class="saved-item" onclick="selectSaved('${dropId}', '${nameEsc}', '${addrEsc}')">
           <div>
             <div class="saved-item-name">📌 ${p.name}</div>
             <div class="saved-item-addr">${p.address}</div>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
     }
     el.classList.add('open');
   }
@@ -493,9 +496,11 @@
     else { await showSaved(dropId); }
   }
 
-  function selectSaved(dropId, name) {
+  function selectSaved(dropId, name, address) {
     const inputId = dropId === 'fromDrop' ? 'from' : 'to';
-    document.getElementById(inputId).value = name;
+    const input = document.getElementById(inputId);
+    input.value = name;                  // show the alias
+    input.dataset.addr = address || name; // store the real address for the map
     document.getElementById(dropId).classList.remove('open');
   }
 
@@ -606,9 +611,13 @@
     const el = document.getElementById(acId);
     el.classList.remove('open');
     if (acId === 'fromAC') {
-      document.getElementById('from').value = address;
+      const input = document.getElementById('from');
+      input.value = address;
+      input.dataset.addr = address;
     } else if (acId === 'toAC') {
-      document.getElementById('to').value = address;
+      const input = document.getElementById('to');
+      input.value = address;
+      input.dataset.addr = address;
     } else if (acId === 'modalAC') {
       document.getElementById('newPlaceSearch').value = address;
       document.getElementById('newPlaceAddr').value = address;
@@ -662,8 +671,13 @@
   async function submitRequest() {
     const date       = document.getElementById('date').value;
     const time       = document.getElementById('time').value;
-    const from       = document.getElementById('from').value.trim();
-    const to         = document.getElementById('to').value.trim();
+    const fromEl      = document.getElementById('from');
+    const toEl        = document.getElementById('to');
+    const from       = fromEl.value.trim();
+    const to         = toEl.value.trim();
+    // Real addresses for the map (fall back to the visible text if none stored)
+    const fromAddr   = (fromEl.dataset.addr || from).trim();
+    const toAddr     = (toEl.dataset.addr || to).trim();
     const purpose    = document.getElementById('purpose').value.trim();
     const needReturn = document.getElementById('returnToggle').checked;
     const returnTime = document.getElementById('returnTime').value;
@@ -671,6 +685,9 @@
 
     if (!date || !time || !from || !to) { showToast('⚠️ Please fill in all required fields'); return; }
     if (needReturn && !returnTime) { showToast('⚠️ Please enter the return time'); return; }
+
+    // Build Google Maps directions link (origin → destination)
+    const mapLink = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(fromAddr)}&destination=${encodeURIComponent(toAddr)}`;
 
     showToast('📋 Saving to log...');
     try {
@@ -683,6 +700,7 @@
       formData.append('needReturn', needReturn ? 'Yes' : 'No');
       formData.append('returnTime', returnTime);
       formData.append('tip', tip);
+      formData.append('map', mapLink);
       await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: formData });
     } catch(e) { console.warn('Sheets log failed:', e); }
 
@@ -694,6 +712,7 @@
     if (purpose) msg += `🎯 *Purpose:* ${purpose}\n`;
     msg += needReturn ? `\n↩️ *Return ride:* Yes, at ${returnTime}\n` : `\n↩️ *Return ride:* No\n`;
     if (tip) msg += `🎁 *Tip for driver:* ${tip}\n`;
+    msg += `\n🗺️ *Route map:* ${mapLink}\n`;
     msg += `\n_Please confirm ✅_`;
 
     showToast('✅ Saved! Opening WhatsApp...');
