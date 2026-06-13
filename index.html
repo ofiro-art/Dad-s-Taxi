@@ -215,6 +215,42 @@
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .required-star { color: #7c6ef7; margin-left: 2px; }
 
+    /* Swap button */
+    .swap-row { display: flex; justify-content: center; margin: -6px 0 12px; }
+    .btn-swap {
+      background: #1a1a24; border: 1px solid #2e2e3a; border-radius: 20px;
+      color: #9090a8; font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
+      padding: 6px 16px; cursor: pointer; transition: all 0.15s;
+    }
+    .btn-swap:hover { border-color: #7c6ef7; color: #7c6ef7; background: #1e1b2e; }
+    .btn-swap:active { transform: scale(0.95); }
+
+    /* Favorite star on saved items */
+    .saved-item-star { color: #f5c518; font-size: 13px; margin-left: 6px; }
+
+    /* Car animation overlay */
+    .car-overlay {
+      position: fixed; inset: 0; background: rgba(10,10,15,0.85);
+      display: none; align-items: center; justify-content: center;
+      z-index: 999; overflow: hidden;
+    }
+    .car-overlay.show { display: flex; }
+    .car-track { position: relative; width: 100%; height: 80px; }
+    .car-emoji {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      font-size: 56px; left: -100px; animation: drive 1.3s ease-in forwards;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+    }
+    .car-dust {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      font-size: 28px; left: -140px; animation: drive 1.3s ease-in forwards;
+      opacity: 0.6;
+    }
+    @keyframes drive {
+      0% { left: -120px; }
+      100% { left: calc(100% + 120px); }
+    }
+
     /* Tip the Driver chips */
     .tip-chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .tip-chip {
@@ -291,6 +327,10 @@
     </div>
   </div>
 
+  <div class="swap-row">
+    <button class="btn-swap" onclick="swapLocations()" title="Swap pickup and destination">⇅ Swap</button>
+  </div>
+
   <div class="field">
     <label>Destination <span class="required-star">*</span></label>
     <div class="loc-wrap" id="toWrap">
@@ -347,6 +387,13 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="car-overlay" id="carOverlay">
+  <div class="car-track">
+    <span class="car-dust">💨</span>
+    <span class="car-emoji">🚗</span>
+  </div>
+</div>
 
 <script>
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzJp3XXcX30UaRHP9kZwcCdmlavYNxZtXb-M6HXwirVzjX6nCNaFAMMBQ4ZT1QsWpSf/exec';
@@ -470,18 +517,31 @@
   }
 
   // ── Saved dropdown in form ────────────────────────────────
+  function sortedByUsage(places) {
+    // Return a copy sorted by usage count (desc), keeping original order for ties
+    return places
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => ((b.p.count || 0) - (a.p.count || 0)) || (a.i - b.i))
+      .map(x => x.p);
+  }
+
   async function showSaved(dropId) {
     const places = await getPlaces();
     const el = document.getElementById(dropId);
     if (!places.length) { el.innerHTML = '<div class="no-saved">No saved places. Use ⚙️ to add.</div>'; }
     else {
-      el.innerHTML = places.map(p => {
+      const ordered = sortedByUsage(places);
+      const maxCount = Math.max(...ordered.map(p => p.count || 0));
+      el.innerHTML = ordered.map(p => {
         const nameEsc = p.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const addrEsc = p.address.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        // Star the most-used place(s): count >= 3 and equal to the top count
+        const isFav = (p.count || 0) >= 3 && (p.count || 0) === maxCount;
+        const star = isFav ? '<span class="saved-item-star">⭐</span>' : '';
         return `
         <div class="saved-item" onclick="selectSaved('${dropId}', '${nameEsc}', '${addrEsc}')">
           <div>
-            <div class="saved-item-name">📌 ${p.name}</div>
+            <div class="saved-item-name">📌 ${p.name}${star}</div>
             <div class="saved-item-addr">${p.address}</div>
           </div>
         </div>`;
@@ -496,12 +556,24 @@
     else { await showSaved(dropId); }
   }
 
-  function selectSaved(dropId, name, address) {
+  async function selectSaved(dropId, name, address) {
     const inputId = dropId === 'fromDrop' ? 'from' : 'to';
     const input = document.getElementById(inputId);
     input.value = name;                  // show the alias
     input.dataset.addr = address || name; // store the real address for the map
     document.getElementById(dropId).classList.remove('open');
+    // Bump usage count for this place (fire-and-forget)
+    bumpUsage(name);
+  }
+
+  async function bumpUsage(name) {
+    try {
+      const places = await getPlaces();
+      const idx = places.findIndex(p => p.name === name);
+      if (idx === -1) return;
+      places[idx].count = (places[idx].count || 0) + 1;
+      await savePlaces(places);
+    } catch(e) { /* non-critical */ }
   }
 
   // ── Address autocomplete ──────────────────────────────────
@@ -633,6 +705,17 @@
   });
 
   // ── Form logic ────────────────────────────────────────────
+  function swapLocations() {
+    const fromEl = document.getElementById('from');
+    const toEl = document.getElementById('to');
+    const tmpVal = fromEl.value;
+    const tmpAddr = fromEl.dataset.addr || '';
+    fromEl.value = toEl.value;
+    fromEl.dataset.addr = toEl.dataset.addr || '';
+    toEl.value = tmpVal;
+    toEl.dataset.addr = tmpAddr;
+  }
+
   function toggleReturn() {
     const checked = document.getElementById('returnToggle').checked;
     document.getElementById('returnTimeField').classList.toggle('visible', checked);
@@ -716,10 +799,25 @@
     msg += `\n_Please confirm ✅_`;
 
     showToast('✅ Saved! Opening WhatsApp...');
+    playCarAnimation();
     setTimeout(() => {
       if (navigator.share) { navigator.share({ text: msg }).catch(() => {}); }
       else { window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank'); }
-    }, 800);
+    }, 1300);
+  }
+
+  function playCarAnimation() {
+    const overlay = document.getElementById('carOverlay');
+    // Restart animation by re-adding nodes
+    const car = overlay.querySelector('.car-emoji');
+    const dust = overlay.querySelector('.car-dust');
+    overlay.classList.add('show');
+    [car, dust].forEach(el => {
+      el.style.animation = 'none';
+      void el.offsetWidth; // reflow to restart
+      el.style.animation = '';
+    });
+    setTimeout(() => overlay.classList.remove('show'), 1300);
   }
 </script>
 </body>
