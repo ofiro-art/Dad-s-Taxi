@@ -381,23 +381,79 @@
 
   // ── Address autocomplete (Nominatim) ─────────────────────
   let acTimers = {};
+
+  function isPostalCode(query) {
+    // Singapore: 6 digits. Israel: 7 digits. Also generic 5-digit zip.
+    return /^\d{5,7}$/.test(query.trim());
+  }
+
+  function formatResult(d) {
+    const a = d.address || {};
+    // Build a clean short label
+    const parts = [
+      a.road || a.pedestrian || a.path || a.amenity || a.building || '',
+      a.house_number ? a.house_number : '',
+      a.suburb || a.neighbourhood || a.quarter || '',
+      a.city || a.town || a.village || a.municipality || '',
+      a.postcode || '',
+      a.country || ''
+    ].filter(Boolean);
+    const label = parts.join(', ') || d.display_name;
+    return { label, full: d.display_name };
+  }
+
   async function searchAddress(query, acId) {
     clearTimeout(acTimers[acId]);
     const el = document.getElementById(acId);
     if (!query || query.length < 3) { el.classList.remove('open'); return; }
     acTimers[acId] = setTimeout(async () => {
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5`, {
-          headers: { 'Accept-Language': 'en' }
-        });
-        const data = await res.json();
-        if (!data.length) { el.classList.remove('open'); return; }
-        el.innerHTML = data.map(d => `
-          <div class="autocomplete-item" onclick="selectAddress('${acId}', '${d.display_name.replace(/'/g, "\\'")}')">
-            ${d.display_name}
-          </div>
-        `).join('');
-        el.classList.add('open');
+        let url;
+        if (isPostalCode(query)) {
+          // Postal code search — try SG first, then IL, then global
+          const sgRes = await fetch(
+            `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(query)}&countrycodes=sg&format=json&addressdetails=1&limit=3`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          let data = await sgRes.json();
+          if (!data.length) {
+            const ilRes = await fetch(
+              `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(query)}&countrycodes=il&format=json&addressdetails=1&limit=3`,
+              { headers: { 'Accept-Language': 'en' } }
+            );
+            data = await ilRes.json();
+          }
+          if (!data.length) { el.classList.remove('open'); return; }
+          el.innerHTML = data.map(d => {
+            const r = formatResult(d);
+            return `<div class="autocomplete-item" onclick="selectAddress('${acId}', '${r.label.replace(/'/g, "\\'")}')">
+              ${r.label}
+            </div>`;
+          }).join('');
+          el.classList.add('open');
+        } else {
+          // Free-text search — prioritise SG+IL, fallback to global
+          const localRes = await fetch(
+            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5&countrycodes=sg,il`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          let data = await localRes.json();
+          if (!data.length) {
+            const globalRes = await fetch(
+              `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5`,
+              { headers: { 'Accept-Language': 'en' } }
+            );
+            data = await globalRes.json();
+          }
+          if (!data.length) { el.classList.remove('open'); return; }
+          el.innerHTML = data.map(d => {
+            const r = formatResult(d);
+            return `<div class="autocomplete-item" onclick="selectAddress('${acId}', '${r.label.replace(/'/g, "\\'")}')">
+              ${r.label}
+            </div>`;
+          }).join('');
+          el.classList.add('open');
+        }
       } catch(e) { el.classList.remove('open'); }
     }, 400);
   }
