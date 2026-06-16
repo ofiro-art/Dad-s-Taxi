@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -215,6 +215,14 @@
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .required-star { color: #7c6ef7; margin-left: 2px; }
 
+    /* Inline field errors */
+    .field-error {
+      color: #ff6b6b; font-size: 12.5px; margin-top: 6px;
+      display: none; align-items: center; gap: 5px; line-height: 1.4;
+    }
+    .field-error.show { display: flex; }
+    input.input-error { border-color: #ff5555 !important; background: #1f1314 !important; }
+
     /* Swap button */
     .swap-row { display: flex; justify-content: center; margin: -6px 0 12px; }
     .btn-swap {
@@ -306,11 +314,13 @@
   <div class="row-2">
     <div class="field">
       <label>Date <span class="required-star">*</span></label>
-      <div class="input-icon-wrap"><input type="date" id="date" /></div>
+      <div class="input-icon-wrap"><input type="date" id="date" onchange="liveValidate()" /></div>
+      <div class="field-error" id="dateError"></div>
     </div>
     <div class="field">
       <label>Departure Time <span class="required-star">*</span></label>
-      <div class="input-icon-wrap time-icon"><input type="time" id="time" /></div>
+      <div class="input-icon-wrap time-icon"><input type="time" id="time" onchange="liveValidate()" /></div>
+      <div class="field-error" id="timeError"></div>
     </div>
   </div>
 
@@ -360,7 +370,8 @@
     <div class="return-time" id="returnTimeField">
       <div class="field" style="margin-top:12px; margin-bottom:0;">
         <label>Return Time</label>
-        <div class="input-icon-wrap time-icon"><input type="time" id="returnTime" /></div>
+        <div class="input-icon-wrap time-icon"><input type="time" id="returnTime" onchange="liveValidate()" /></div>
+        <div class="field-error" id="returnError"></div>
       </div>
     </div>
   </div>
@@ -704,6 +715,76 @@
     });
   });
 
+  // ── Validation ────────────────────────────────────────────
+  function showFieldError(inputId, errorId, message) {
+    const err = document.getElementById(errorId);
+    err.textContent = '⚠️ ' + message;
+    err.classList.add('show');
+    const input = document.getElementById(inputId);
+    if (input) input.classList.add('input-error');
+  }
+
+  function clearFieldError(inputId, errorId) {
+    const err = document.getElementById(errorId);
+    err.classList.remove('show');
+    err.textContent = '';
+    const input = document.getElementById(inputId);
+    if (input) input.classList.remove('input-error');
+  }
+
+  function clearAllErrors() {
+    clearFieldError('date', 'dateError');
+    clearFieldError('time', 'timeError');
+    clearFieldError('returnTime', 'returnError');
+  }
+
+  // Returns true if all date/time checks pass; otherwise shows inline errors
+  function validateDateTime(date, time, needReturn, returnTime) {
+    clearAllErrors();
+    let ok = true;
+
+    const now = new Date();
+    // Build a Date for the chosen departure (date + time)
+    const departure = new Date(`${date}T${time || '00:00'}`);
+
+    // Date-only comparison (ignore time of day)
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const chosenDate = new Date(`${date}T00:00`);
+
+    if (chosenDate < today) {
+      showFieldError('date', 'dateError', "The date can't be in the past");
+      ok = false;
+    } else if (time && departure < now && chosenDate.getTime() === today.getTime()) {
+      // Same day and the departure time already passed
+      showFieldError('time', 'timeError', 'That departure time has already passed today');
+      ok = false;
+    }
+
+    // Return time must be after departure time (same day)
+    if (needReturn && time && returnTime) {
+      if (returnTime <= time) {
+        showFieldError('returnTime', 'returnError', 'Return time must be after the departure time');
+        ok = false;
+      }
+    }
+
+    return ok;
+  }
+
+  // Live validation: runs whenever date/time/return changes
+  function liveValidate() {
+    const date = document.getElementById('date').value;
+    const time = document.getElementById('time').value;
+    const needReturn = document.getElementById('returnToggle').checked;
+    const returnTime = document.getElementById('returnTime').value;
+    // Only validate fields that have a value, to avoid nagging on empty fields
+    if (date || (needReturn && returnTime)) {
+      validateDateTime(date, time, needReturn, returnTime);
+    } else {
+      clearAllErrors();
+    }
+  }
+
   // ── Form logic ────────────────────────────────────────────
   // Shorten a URL; try TinyURL then is.gd; fall back to the original on failure
   async function shortenUrl(longUrl) {
@@ -741,6 +822,8 @@
   function toggleReturn() {
     const checked = document.getElementById('returnToggle').checked;
     document.getElementById('returnTimeField').classList.toggle('visible', checked);
+    if (!checked) clearFieldError('returnTime', 'returnError');
+    else liveValidate();
   }
 
   function selectTip(el) {
@@ -790,6 +873,9 @@
 
     if (!date || !time || !from || !to) { showToast('⚠️ Please fill in all required fields'); return; }
     if (needReturn && !returnTime) { showToast('⚠️ Please enter the return time'); return; }
+
+    // Date/time logic checks (shows inline errors)
+    if (!validateDateTime(date, time, needReturn, returnTime)) { return; }
 
     // Build Google Maps directions link (origin → destination)
     const mapLink = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(fromAddr)}&destination=${encodeURIComponent(toAddr)}`;
