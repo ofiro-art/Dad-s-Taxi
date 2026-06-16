@@ -705,6 +705,28 @@
   });
 
   // ── Form logic ────────────────────────────────────────────
+  // Shorten a URL; try TinyURL then is.gd; fall back to the original on failure
+  async function shortenUrl(longUrl) {
+    // Attempt 1: TinyURL (usually CORS-friendly)
+    try {
+      const res = await fetch('https://tinyurl.com/api-create.php?url=' + encodeURIComponent(longUrl));
+      if (res.ok) {
+        const short = (await res.text()).trim();
+        if (short.startsWith('http')) return short;
+      }
+    } catch (e) { /* try next */ }
+    // Attempt 2: is.gd
+    try {
+      const res = await fetch('https://is.gd/create.php?format=simple&url=' + encodeURIComponent(longUrl));
+      if (res.ok) {
+        const short = (await res.text()).trim();
+        if (short.startsWith('http')) return short;
+      }
+    } catch (e) { /* fall back */ }
+    // Fallback: original (long) link
+    return longUrl;
+  }
+
   function swapLocations() {
     const fromEl = document.getElementById('from');
     const toEl = document.getElementById('to');
@@ -772,6 +794,11 @@
     // Build Google Maps directions link (origin → destination)
     const mapLink = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(fromAddr)}&destination=${encodeURIComponent(toAddr)}`;
 
+    // Build Waze navigation links (address-based; Waze always starts from current location)
+    // Full links are used (not shortened) so they reliably open the Waze app.
+    const wazePickup = `https://waze.com/ul?q=${encodeURIComponent(fromAddr)}&navigate=yes`;
+    const wazeDest   = `https://waze.com/ul?q=${encodeURIComponent(toAddr)}&navigate=yes`;
+
     showToast('📋 Saving to log...');
     try {
       const formData = new FormData();
@@ -795,6 +822,8 @@
     if (purpose) msg += `🎯 *Purpose:* ${purpose}\n`;
     msg += needReturn ? `\n↩️ *Return ride:* Yes, at ${returnTime}\n` : `\n↩️ *Return ride:* No\n`;
     if (tip) msg += `🎁 *Tip for driver:* ${tip}\n`;
+    msg += `\n🚗 *Waze: Go to pickup:* ${wazePickup}\n`;
+    msg += `🏁 *Waze: Go to destination:* ${wazeDest}\n`;
     msg += `\n_Please confirm ✅_`;
 
     showToast('✅ Saved! Opening WhatsApp...');
